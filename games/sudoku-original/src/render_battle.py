@@ -27,14 +27,42 @@ sys.argv = _argv
 from render_short_v2 import (DARK, GOLD, WHITE, art, back, clamp, draw_game,  # noqa: E402
                              ease, font, nav_bar, overlay, paste, star, tinted)
 
-OUT = sys.argv[1] if len(sys.argv) > 1 else os.path.join(base.GAME, "exports", "battle-30s.mp4")
-W, H, FPS, DUR = base.W, base.H, 30, 30.0
+ARGS = sys.argv[1:]
+CUT = 30
+if ARGS[:1] == ["--cut"]:
+    CUT, ARGS = int(ARGS[1]), ARGS[2:]
+OUT = ARGS[0] if ARGS else os.path.join(base.GAME, "exports", f"battle-{CUT}s.mp4")
+W, H, FPS, DUR = base.W, base.H, 30, float(CUT)
 NFRAMES = int(FPS * DUR)
 P = DARK
 T = P["text"]
 T2 = P["text2"]
 
 T_CREATE, T_LOBBY, T_GO, T_RACE, T_RESULTS, T_END = 2.6, 6.2, 11.6, 13.6, 22.6, 26.4
+
+# Output time -> timeline time, as (out_start, out_end, timeline_start, timeline_end).
+# The 15 s cut skips the home and create pages, starts in the lobby and keeps the
+# countdown, the overtake, the results and the end card at close to real speed.
+SEGMENTS = {30: [(0.0, 30.0, 0.0, 30.0)],
+            15: [(0.0, 3.6, T_LOBBY, T_GO),
+                 (3.6, 5.0, T_GO, T_RACE),
+                 (5.0, 10.0, T_RACE + 2.5, T_RESULTS),
+                 (10.0, 12.6, T_RESULTS, T_RESULTS + 3.0),
+                 (12.6, 15.0, T_END, T_END + 3.0)]}[CUT]
+
+
+def to_timeline(t):
+    for o0, o1, t0, t1 in SEGMENTS:
+        if t < o1 or (o0, o1, t0, t1) == SEGMENTS[-1]:
+            return t0 + (t1 - t0) * (t - o0) / (o1 - o0)
+
+
+def to_output(t):
+    """Output time of a timeline moment, or None when the cut skips it."""
+    for o0, o1, t0, t1 in SEGMENTS:
+        if t0 <= t <= t1:
+            return o0 + (o1 - o0) * (t - t0) / (t1 - t0)
+    return None
 CODE = "B7K4P9"
 BATTLE_NAME = "Friday Night Battle"
 PLAYERS = [("You", "lion"), ("Alex", "fox"), ("Priya", "panda"), ("Sam", "owl")]
@@ -257,7 +285,7 @@ def sec_lobby(now):
         overlay(img, toast)
     tap(img, 304, 770, T_LOBBY + 0.85, now)
     tap(img, W // 2, 1674, T_GO - 0.25, now)
-    cap_at(img, now, T_LOBBY, T_LOBBY + 1.6, "SHARE THE CODE")
+    cap_at(img, now, T_LOBBY, T_LOBBY + 1.6, "CHALLENGE YOUR\nFRIENDS" if CUT == 15 else "SHARE THE CODE")
     cap_at(img, now, T_LOBBY + 1.6, T_GO, "FRIENDS JOIN\nFROM ANYWHERE", P["success"])
     return img
 
@@ -430,7 +458,7 @@ SECTIONS = [(0.0, sec_home), (T_CREATE, sec_create), (T_LOBBY, sec_lobby), (T_GO
 
 
 def frame(n):
-    now = n / FPS
+    now = to_timeline(n / FPS)
     idx = max(i for i, (t0, _) in enumerate(SECTIONS) if now >= t0)
     img = SECTIONS[idx][1](now)
     t0 = SECTIONS[idx][0]
@@ -447,13 +475,16 @@ def build_audio(path):
     music = base.load_wav("music_calm")[:n]
     env = np.ones(len(music))
     env[:int(0.3 * SR)] = np.linspace(0, 1, int(0.3 * SR))
-    i0, i1 = int(T_GO * SR), int(T_RACE * SR)
+    i0, i1 = int(to_output(T_GO) * SR), int(to_output(T_RACE) * SR)
     env[i0:i1] = 0.35   # drop the music under the countdown
     env[-int(1.5 * SR):] *= np.linspace(1, 0, int(1.5 * SR))
     out[:len(music)] += 0.5 * music * env
 
     def add(name, t, gain=1.0):
         s = base.load_wav(name)
+        t = to_output(t)
+        if t is None:
+            return
         i = int(t * SR)
         m = min(len(s), n - i)
         if m > 0:
