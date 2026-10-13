@@ -1,0 +1,16 @@
+# Large media: keep raw recordings and final renders out of git
+games/*/raw/*
+games/*/exports/*
+!games/*/raw/.gitkeep
+!games/*/exports/.gitkeep
+
+# Editor project caches / autosaves
+*.autosave
+*.bak
+*.tmp
+.cache/
+Cache/
+
+# OS
+.DS_Store
+Thumbs.db
