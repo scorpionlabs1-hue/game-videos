@@ -13,7 +13,8 @@ Timeline
  23.2 - 26.6  NEW: Daily Challenge progress rings and milestone trophies
  26.6 - 30.0  end card
 
-Usage: python3 render_short_v2.py [output.mp4]
+Usage: python3 render_short_v2.py [--cut 15] [output.mp4]
+       --cut 15 renders a 15 s version: the same scenes, each played ~2x faster.
        PREVIEW=1.5,17,21 python3 render_short_v2.py   # writes preview PNGs instead
 """
 import math
@@ -30,13 +31,39 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 GAME = os.path.dirname(HERE)
 ASSETS = os.path.join(GAME, "assets")
 GA = os.path.join(ASSETS, "game")
-OUT = sys.argv[1] if len(sys.argv) > 1 else os.path.join(GAME, "exports", "short-30s-whats-new.mp4")
+ARGS = sys.argv[1:]
+CUT = 30
+if ARGS[:1] == ["--cut"]:
+    CUT, ARGS = int(ARGS[1]), ARGS[2:]
+OUT = ARGS[0] if ARGS else os.path.join(GAME, "exports", f"short-{CUT}s-whats-new.mp4")
 
-W, H, FPS, DUR = 1080, 1920, 30, 30.0
-NFRAMES = int(FPS * DUR)
+W, H, FPS, DUR = 1080, 1920, 30, 30.0  # DUR is the length of the full timeline below
+OUT_DUR = float(CUT)
+NFRAMES = int(FPS * OUT_DUR)
 
 T_SOLVED, T_THEMES, T_BATTLE, T_DAILY, T_END = 13.0, 15.6, 19.6, 23.2, 26.6
 GAME_START, GAME_END = 0.5, 12.7
+
+# Output time -> timeline time, as (output, timeline) knots. The 15 s cut keeps every
+# scene and speeds each one up; the music still plays at normal speed.
+KNOTS = {30: [(0.0, 0.0), (30.0, 30.0)],
+         15: [(0.0, 0.0), (5.6, T_SOLVED), (7.0, T_THEMES), (9.0, T_BATTLE),
+              (11.0, T_DAILY), (12.6, T_END), (15.0, 30.0)]}[CUT]
+
+
+def _interp(t, a, b):
+    for (x0, y0), (x1, y1) in zip(KNOTS, KNOTS[1:]):
+        if t <= (x1, y1)[a] or (x1, y1) == KNOTS[-1]:
+            lo, hi = ((x0, y0)[a], (x1, y1)[a]), ((x0, y0)[b], (x1, y1)[b])
+            return hi[0] + (hi[1] - hi[0]) * (t - lo[0]) / (lo[1] - lo[0])
+
+
+def to_timeline(t):
+    return _interp(t, 0, 1)
+
+
+def to_output(t):
+    return _interp(t, 1, 0)
 
 
 # ------------------------------------------------------------------ assets
@@ -669,7 +696,7 @@ XFADE = 0.22
 
 
 def frame(n):
-    now = n / FPS
+    now = to_timeline(n / FPS)
     idx = max(i for i, (t0, _) in enumerate(SECTIONS) if now >= t0)
     img = SECTIONS[idx][1](now)
     t0 = SECTIONS[idx][0]
@@ -693,7 +720,7 @@ def load_wav(name):
 
 
 def build_audio(path):
-    n = int(SR * DUR)
+    n = int(SR * OUT_DUR)
     out = np.zeros(n)
     music = load_wav("music_calm")[:n]
     env = np.ones(len(music))
@@ -704,7 +731,7 @@ def build_audio(path):
 
     def add(name, t, gain=1.0):
         s = load_wav(name)
-        i0 = int(t * SR)
+        i0 = int(to_output(t) * SR)
         m = min(len(s), n - i0)
         if m > 0:
             out[i0:i0 + m] += gain * s[:m]

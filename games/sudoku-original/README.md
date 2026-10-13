@@ -14,6 +14,7 @@
 |------|-------|----------|-------------|-------|
 | 2026-10-13 | 30 s gameplay short | Shorts / TikTok / Reels | Recreated board + store screenshots | `python3 src/render_short.py` → `exports/short-30s-gameplay.mp4` |
 | 2026-10-13 | 30 s "what's new" short (themes, battle, daily trophies) | Shorts / TikTok / Reels | Game source assets | `python3 src/render_short_v2.py` → `exports/short-30s-whats-new.mp4` |
+| 2026-10-13 | 15 s "what's new" cut (same scenes, ~2x faster) | Shorts / TikTok / Reels | Game source assets | `python3 src/render_short_v2.py --cut 15` → `exports/short-15s-whats-new.mp4` |
 
 ## Rendering
 
