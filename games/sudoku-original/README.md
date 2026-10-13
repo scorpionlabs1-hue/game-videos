@@ -16,6 +16,7 @@
 | 2026-10-13 | 30 s "what's new" short (themes, battle, daily trophies) | Shorts / TikTok / Reels | Game source assets | `python3 src/render_short_v2.py` → `exports/short-30s-whats-new.mp4` |
 | 2026-10-13 | 15 s "what's new" cut (last 4 s of gameplay, then every feature) | Shorts / TikTok / Reels | Game source assets | `python3 src/render_short_v2.py --cut 15` → `exports/short-15s-whats-new.mp4` |
 | 2026-10-13 | 20 s "fail" ad: a player misses an obvious 9 three times | Ads (Google / Meta / TikTok) | Game source assets | `python3 src/render_fail_ad.py` → `exports/ad-20s-fail.mp4` |
+| 2026-10-13 | 30 s Battle Mode video: create room, friends join by code, race with live standings, win | Shorts / Reels / Ads | Game source assets | `python3 src/render_battle.py` → `exports/battle-30s.mp4` |
 
 ## Rendering
 
