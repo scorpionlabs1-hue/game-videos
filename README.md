@@ -38,3 +38,4 @@ See [docs/workflow.md](docs/workflow.md) for the full process.
 ## Games
 
 - [Flap King Infinity](games/flap-king-infinity/)
+- [Sudoku - Original](games/sudoku-original/)
