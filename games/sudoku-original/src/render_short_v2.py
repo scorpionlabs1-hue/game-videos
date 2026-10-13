@@ -14,7 +14,7 @@ Timeline
  26.6 - 30.0  end card
 
 Usage: python3 render_short_v2.py [--cut 15] [output.mp4]
-       --cut 15 renders a 15 s version: the same scenes, each played ~2x faster.
+       --cut 15 renders a 15 s version: 4 s of gameplay, then every new feature.
        PREVIEW=1.5,17,21 python3 render_short_v2.py   # writes preview PNGs instead
 """
 import math
@@ -44,26 +44,30 @@ NFRAMES = int(FPS * OUT_DUR)
 T_SOLVED, T_THEMES, T_BATTLE, T_DAILY, T_END = 13.0, 15.6, 19.6, 23.2, 26.6
 GAME_START, GAME_END = 0.5, 12.7
 
-# Output time -> timeline time, as (output, timeline) knots. The 15 s cut keeps every
-# scene and speeds each one up; the music still plays at normal speed.
-KNOTS = {30: [(0.0, 0.0), (30.0, 30.0)],
-         15: [(0.0, 0.0), (5.6, T_SOLVED), (7.0, T_THEMES), (9.0, T_BATTLE),
-              (11.0, T_DAILY), (12.6, T_END), (15.0, 30.0)]}[CUT]
-
-
-def _interp(t, a, b):
-    for (x0, y0), (x1, y1) in zip(KNOTS, KNOTS[1:]):
-        if t <= (x1, y1)[a] or (x1, y1) == KNOTS[-1]:
-            lo, hi = ((x0, y0)[a], (x1, y1)[a]), ((x0, y0)[b], (x1, y1)[b])
-            return hi[0] + (hi[1] - hi[0]) * (t - lo[0]) / (lo[1] - lo[0])
+# Output time -> timeline time, as (out_start, out_end, timeline_start, timeline_end)
+# segments. The 15 s cut keeps only the last 4 s of gameplay (at real speed) and gives
+# the rest of the time to the new features; the music still plays at normal speed.
+SEGMENTS = {30: [(0.0, 30.0, 0.0, 30.0)],
+            15: [(0.0, 4.0, 9.0, T_SOLVED),
+                 (4.0, 5.3, T_SOLVED, 14.6),
+                 (5.3, 7.9, T_THEMES, T_BATTLE),
+                 (7.9, 10.4, T_BATTLE, 22.9),
+                 (10.4, 12.8, T_DAILY, 26.4),
+                 (12.8, 15.0, T_END, 29.4)]}[CUT]
 
 
 def to_timeline(t):
-    return _interp(t, 0, 1)
+    for o0, o1, t0, t1 in SEGMENTS:
+        if t < o1 or (o0, o1, t0, t1) == SEGMENTS[-1]:
+            return t0 + (t1 - t0) * (t - o0) / (o1 - o0)
 
 
 def to_output(t):
-    return _interp(t, 1, 0)
+    """Output time of a timeline moment, or None when the cut skips it."""
+    for o0, o1, t0, t1 in SEGMENTS:
+        if t0 <= t <= t1:
+            return o0 + (o1 - o0) * (t - t0) / (t1 - t0)
+    return None
 
 
 # ------------------------------------------------------------------ assets
@@ -423,7 +427,8 @@ def draw_game(now, P, solved_wave=None, freeze=None):
 # ------------------------------------------------------------------ sections
 def sec_game(now):
     img = draw_game(now, DARK)
-    caps = [(0.0, 3.0, "CAN YOU SOLVE THIS?", DARK["accent"]),
+    caps = [(SEGMENTS[0][2], T_SOLVED, "CAN YOU SOLVE THIS?", DARK["accent"])] if CUT == 15 else [
+            (0.0, 3.0, "CAN YOU SOLVE THIS?", DARK["accent"]),
             (3.0, T_MISTAKE - 0.1, "NO GUESSING. PURE LOGIC.", DARK["accent"]),
             (T_MISTAKE - 0.1, T_MISTAKE + 2.4, "CAREFUL… ONLY 3 LIVES!", DARK["error"]),
             (T_MISTAKE + 2.4, T_SOLVED, "ALMOST THERE…", DARK["accent"])]
@@ -731,7 +736,10 @@ def build_audio(path):
 
     def add(name, t, gain=1.0):
         s = load_wav(name)
-        i0 = int(to_output(t) * SR)
+        t_out = to_output(t)
+        if t_out is None:
+            return
+        i0 = int(t_out * SR)
         m = min(len(s), n - i0)
         if m > 0:
             out[i0:i0 + m] += gain * s[:m]
