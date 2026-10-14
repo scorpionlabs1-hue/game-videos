@@ -14,7 +14,7 @@ Timeline
  15.0 - 17.5  GET READY 3-2-1 GO
  17.5 - 25.5  the race with live standings and both faces
  25.5 - 30.0  results: Meera wins, "Rematch. NOW."
- 30.0 - 34.0  end card: "WHO'S YOUR RIVAL?"
+ 30.0 - 34.0  end card: the game logo
 
 Usage: python3 render_battle_story.py [output.mp4]
        PREVIEW=2,5,9,13.5,16.3,19.5,23.5,27.5,32.5 python3 render_battle_story.py
@@ -610,38 +610,16 @@ def sec_results(now):
 
 
 def sec_end(now):
+    """End card: only the game logo."""
     local = now - T_END
     img = base.end_bg().copy()
-    cx = W // 2
-    a = ease(local / 0.35)
-
-    def head(d):
-        for i, line in enumerate(["WHO'S YOUR", "RIVAL?"]):
-            sz = 100 * (0.8 + 0.2 * back((local - i * 0.12) / 0.4))
-            d.text((cx, 300 + i * 120), line, font=font("Bold", sz), fill=(255, 255, 255, int(255 * a)), anchor="mm")
-        d.text((cx, 520), "Challenge friends in Battle Mode", font=font("Medium", 48), fill=(205, 218, 255, int(255 * a)), anchor="mm")
-    overlay(img, head)
-    s = back((local - 0.2) / 0.5)
-    for who, x in (("rohan", cx - 250), ("meera", cx + 250)):
-        if s > 0.05:
-            facecam(img, who, x, 820, int(150 * s), T_END - 0.5 if who == "rohan" else now)
-    size = max(2, int(220 * s))
+    s = back(local / 0.6)
+    size = max(2, int(620 * s * (1 + 0.02 * math.sin(max(0.0, local - 0.6) * 4))))
     icon = Image.open(os.path.join(base.ASSETS, "icon.png")).convert("RGBA").resize((size, size), Image.LANCZOS)
     m = Image.new("L", (size, size), 0)
     ImageDraw.Draw(m).rounded_rectangle([0, 0, size - 1, size - 1], int(size * 0.22), fill=255)
     icon.putalpha(m)
-    paste(img, icon, cx - size // 2, 820 - size // 2)
-    b = ease((local - 0.7) / 0.35)
-    pulse = 1 + 0.04 * math.sin(max(0.0, local - 1.1) * 6)
-    bw, bh = int(780 * pulse), int(150 * pulse)
-
-    def cta(d):
-        d.text((cx, 1100), "Sudoku – Original", font=font("Bold", 76), fill=(255, 255, 255, int(255 * b)), anchor="mm")
-        y0 = 1330
-        d.rounded_rectangle([cx - bw // 2, y0 - bh // 2, cx + bw // 2, y0 + bh // 2], bh // 2, fill=(46, 108, 243, int(255 * b)))
-        d.text((cx, y0), "PLAY FREE", font=font("Bold", 66), fill=(255, 255, 255, int(255 * b)), anchor="mm")
-        d.text((cx, 1490), "on Google Play", font=font("Medium", 44), fill=(190, 200, 230, int(255 * b)), anchor="mm")
-    overlay(img, cta)
+    paste(img, icon, W // 2 - size // 2, H // 2 - size // 2)
     return img
 
 
