@@ -1,23 +1,24 @@
 #!/usr/bin/env python3
-"""Render a 34 s story short for Sudoku - Original: "Loser Buys Chai".
+"""Render a 42 s story short for Sudoku - Original: "Loser Buys Chai".
 
 Two friends at a cafe. Rohan brags he is the Sudoku king; Meera challenges him to
 Battle Mode in Sudoku - Original, loser buys chai. She creates a room, he joins
 with the code, they race on the same puzzle with live standings, Rohan leads,
-Meera overtakes and wins, Rohan demands a rematch. The dialogue is shown in
-speech bubbles. Reuses the game screens, art and sounds from render_short_v2.py
-and render_battle.py; the characters and the cafe are drawn here.
+Meera overtakes and wins, Rohan demands a rematch. The dialogue is voiced (see
+make_battle_story_voices.py) and shown in speech bubbles. Reuses the game screens,
+art and sounds from render_short_v2.py and render_battle.py; the characters and
+the cafe are drawn here.
 
 Timeline
-  0.0 - 11.0  cafe: the brag and the challenge
- 11.0 - 15.0  phone: Meera's battle room, Rohan joins with the code
- 15.0 - 17.5  GET READY 3-2-1 GO
- 17.5 - 25.5  the race with live standings and both faces
- 25.5 - 30.0  results: Meera wins, "Rematch. NOW."
- 30.0 - 34.0  end card: the game logo
+  0.0 - 15.6  cafe: the brag and the challenge
+ 15.6 - 21.8  phone: Meera's battle room, Rohan joins with the code
+ 21.8 - 24.3  GET READY 3-2-1 GO
+ 24.3 - 33.2  the race with live standings and both faces
+ 33.2 - 37.8  results: Meera wins, "Rematch. NOW."
+ 37.8 - 42.5  end card: logo, "Download it on the Play Store", "It's FREE!"
 
 Usage: python3 render_battle_story.py [output.mp4]
-       PREVIEW=2,5,9,13.5,16.3,19.5,23.5,27.5,32.5 python3 render_battle_story.py
+       PREVIEW=2,6,11,17,20.5,23,26.5,31,35,39.5,41.5 python3 render_battle_story.py
 """
 import math
 import os
@@ -38,46 +39,63 @@ from render_short_v2 import (DARK, GOLD, WHITE, art, back, clamp, draw_game,  # 
                              ease, font, mix, overlay, paste)
 from render_battle import button, page, tap  # noqa: E402
 
-OUT = sys.argv[1] if len(sys.argv) > 1 else os.path.join(base.GAME, "exports", "battle-story-34s.mp4")
-W, H, FPS, DUR = base.W, base.H, 30, 34.0
+OUT = sys.argv[1] if len(sys.argv) > 1 else os.path.join(base.GAME, "exports", "battle-story-42s.mp4")
+W, H, FPS, DUR = base.W, base.H, 30, 42.5
 NFRAMES = int(FPS * DUR)
 P = DARK
 T, T2 = P["text"], P["text2"]
 
-T_LOBBY, T_GO, T_RACE, T_RESULTS, T_END = 11.0, 15.0, 17.5, 25.5, 30.0
+T_LOBBY, T_GO, T_RACE, T_RESULTS, T_END = 15.6, 21.8, 24.3, 33.2, 37.8
 CODE = "B7K4P9"
-T_JOIN = 12.6
-T_SOLVED = 25.0
+T_JOIN = 19.4
+T_SOLVED = 32.6
+T_REMATCH = 37.35
 
 # ------------------------------------------------------------------ dialogue
-# (start, end, speaker, text, expression of the speaker)
-LINES = [
-    (0.3, 3.0, "rohan", "I'm basically the Sudoku king.\nNobody beats me.", "smug"),
-    (3.2, 6.3, "meera", "Oh really? Ever tried\nBattle Mode in\nSudoku – Original?", "smirk"),
-    (6.5, 7.7, "rohan", "Battle Mode?", "curious"),
-    (7.8, 9.9, "meera", "Same puzzle. Same clock.\nLoser buys chai!", "grin"),
-    (9.9, 11.0, "rohan", "Deal. Easy chai.", "smug"),
-    (11.2, 12.5, "meera", "Room code B7K4P9.\nJoin!", "grin"),
-    (12.8, 14.4, "rohan", "In. Let's go!", "determined"),
-    (18.4, 20.4, "rohan", "Already 60%!\nToo easy.", "smug"),
-    (20.6, 21.8, "meera", "Mm-hmm.", "calm"),
-    (22.3, 24.9, "rohan", "WAIT. How are you\nat 90%?!", "panic"),
-    (26.3, 28.2, "meera", "Chai's on you,\nKing.", "grin"),
-    (28.3, 30.0, "rohan", "Rematch. NOW.", "angry"),
+# Voice lines (audio/battle-story/<id>-<speaker>.wav, made by make_battle_story_voices.py):
+# (id, start, speaker, bubble text, expression of the speaker). Each bubble stays up
+# while its line is spoken.
+VOICE_DIR = os.path.join(base.GAME, "audio", "battle-story")
+_SCRIPT = [
+    ("01", 0.4, "rohan", "I'm basically the Sudoku king.\nNobody beats me.", "smug"),
+    ("02", 4.1, "meera", "Oh really? Ever tried\nBattle Mode in\nSudoku – Original?", "smirk"),
+    ("03", 8.1, "rohan", "Battle Mode?", "curious"),
+    ("04", 9.0, "meera", "Same puzzle. Same clock.\nLoser buys chai!", "grin"),
+    ("05", 13.5, "rohan", "Deal. Easy chai.", "smug"),
+    ("06", 15.9, "meera", "Room code B7K4P9.\nJoin!", "grin"),
+    ("07", 19.8, "rohan", "In. Let's go!", "determined"),
+    ("08", 25.3, "rohan", "Already 60%!\nToo easy.", "smug"),
+    ("09", 28.2, "meera", "Mm-hmm.", "calm"),
+    ("10", 29.6, "rohan", "WAIT. How are you\nat 90%?!", "panic"),
+    ("11", 34.0, "meera", "Chai's on you,\nKing.", "grin"),
+    ("12", 35.6, "rohan", "Rematch. NOW.", "angry"),
+    ("13", 38.5, "meera", None, "grin"),
+    ("14", 40.3, "rohan", None, "grin"),
 ]
+
+
+def _wav_len(lid, who):
+    with wave.open(os.path.join(VOICE_DIR, f"{lid}-{who}.wav")) as w:
+        return w.getnframes() / w.getframerate()
+
+
+VOICES = [(lid, t, who, t + _wav_len(lid, who)) for lid, t, who, _, _ in _SCRIPT]
+# (start, end, speaker, text, expression); end includes a short hold after speaking
+LINES = [(t - 0.1, t + _wav_len(lid, who) + 0.35, who, text, ex) for lid, t, who, text, ex in _SCRIPT if text]
+TALK = [(t, end, who) for _, t, who, end in VOICES]
 
 # what each character looks like when not speaking
 IDLE = [  # (start, rohan, meera)
-    (0.0, "smug", "calm"), (3.2, "curious", "smirk"), (6.5, "curious", "smirk"), (9.9, "smug", "grin"),
-    (11.0, "curious", "grin"), (15.0, "determined", "determined"), (18.4, "smug", "calm"),
-    (21.9, "panic", "focus"), (25.0, "shock", "grin"), (26.3, "shock", "grin"), (28.3, "angry", "laugh"),
+    (0.0, "smug", "calm"), (4.1, "curious", "smirk"), (8.1, "curious", "smirk"), (13.5, "smug", "grin"),
+    (15.6, "curious", "grin"), (21.8, "determined", "determined"), (25.3, "smug", "calm"),
+    (28.9, "panic", "focus"), (32.6, "shock", "grin"), (34.0, "shock", "grin"), (35.6, "angry", "laugh"),
 ]
 
 
 def expr_of(who, now):
     for t0, t1, sp, _, ex in LINES:
         if sp == who and t0 <= now < t1:
-            return ex, True
+            return ex, any(w == who and a <= now < b for a, b, w in TALK)
     cur = IDLE[0]
     for row in IDLE:
         if now >= row[0]:
@@ -399,7 +417,7 @@ def sec_cafe(now):
         ex, talking = expr_of(who, now)
         bob = 6 * math.sin(now * 2 + (0 if who == "rohan" else 1.5)) + (4 * math.sin(now * 18) if talking else 0)
         look = (1, 0.2) if who == "rohan" else (-1, 0.2)
-        img.alpha_composite(person_layer(who, cx, cy, s, now, phone=now > 7.8, look=look, bob=bob))
+        img.alpha_composite(person_layer(who, cx, cy, s, now, phone=now > 9.0, look=look, bob=bob))
     table_fg(img, now)
     speech(img, now, {"rohan": (300, 580, -1), "meera": (790, 580, 1)}, {"rohan": 150, "meera": 150})
     return img
@@ -495,8 +513,8 @@ def framed(game, now):
 def progress(name, now):
     k = clamp((now - T_RACE) / (T_SOLVED - T_RACE))
     if name == "Meera":
-        return float(np.interp(k, [0, 0.25, 0.6, 0.999], [0.05, 0.33, 0.88, 0.99])) if now < T_SOLVED else 1.0
-    return float(np.interp(k, [0, 0.25, 0.6, 1], [0.05, 0.6, 0.76, 0.86]))
+        return float(np.interp(k, [0, 0.15, 0.5, 0.62, 0.999], [0.05, 0.25, 0.6, 0.9, 0.99])) if now < T_SOLVED else 1.0
+    return float(np.interp(k, [0, 0.15, 0.6, 1], [0.05, 0.6, 0.76, 0.86]))
 
 
 def battle_bar(img, now):
@@ -588,10 +606,10 @@ def sec_results(now):
         d.text((x + 210, y + 60), name, font=font("Bold", 42), fill=T, anchor="lm")
         d.text((x + 950, y + 60), f"{t // 60:02d}:{t % 60:02d}", font=font("Bold", 42), fill=T, anchor="rm")
     if local > 1.3:
-        press = 29.5 < now < 29.75
+        press = T_REMATCH - 0.15 < now < T_REMATCH + 0.1
         button(d, (48, 1300, 520, 1420), "Rematch", P["sel"] if press else P["accent"], press, 42)
         button(d, (560, 1300, 1032, 1420), "Back to Battle", P["muted"], False, 38)
-        tap(img, 284, 1360, 29.65, now)
+        tap(img, 284, 1360, T_REMATCH, now)
     rnd = random.Random(7)
 
     def confetti(dd):
@@ -610,16 +628,35 @@ def sec_results(now):
 
 
 def sec_end(now):
-    """End card: only the game logo."""
+    """End card: the game logo, then "Download it on the Play Store" and "It's FREE!"."""
     local = now - T_END
     img = base.end_bg().copy()
     s = back(local / 0.6)
-    size = max(2, int(620 * s * (1 + 0.02 * math.sin(max(0.0, local - 0.6) * 4))))
+    size = max(2, int(560 * s * (1 + 0.02 * math.sin(max(0.0, local - 0.6) * 4))))
     icon = Image.open(os.path.join(base.ASSETS, "icon.png")).convert("RGBA").resize((size, size), Image.LANCZOS)
     m = Image.new("L", (size, size), 0)
     ImageDraw.Draw(m).rounded_rectangle([0, 0, size - 1, size - 1], int(size * 0.22), fill=255)
     icon.putalpha(m)
-    paste(img, icon, W // 2 - size // 2, H // 2 - size // 2)
+    paste(img, icon, W // 2 - size // 2, 760 - size // 2)
+    t_dl, t_free = VOICES[-2][1], VOICES[-1][1]
+    a = ease((now - t_dl + 0.15) / 0.3)
+    if a > 0:
+        def dl(d):
+            d.text((W // 2, 1160), "Download it on", font=font("Medium", 58), fill=(205, 218, 255, int(255 * a)), anchor="mm")
+            bw, bh, y0 = 700, 150, 1300
+            d.rounded_rectangle([W // 2 - bw // 2, y0 - bh // 2, W // 2 + bw // 2, y0 + bh // 2], 34,
+                                fill=(10, 10, 14, int(255 * a)), outline=(170, 170, 180, int(255 * a)), width=4)
+            # Play-style triangle mark
+            px, py = W // 2 - 250, y0
+            d.polygon([(px - 34, py - 46), (px + 46, py), (px - 34, py + 46)], fill=(0, 220, 130, int(255 * a)))
+            d.polygon([(px - 34, py - 46), (px + 6, py), (px - 34, py + 46)], fill=(0, 200, 255, int(255 * a)))
+            d.text((W // 2 + 50, y0), "Play Store", font=font("Bold", 74), fill=(255, 255, 255, int(255 * a)), anchor="mm")
+        overlay(img, dl)
+    b = back((now - t_free + 0.1) / 0.35)
+    if b > 0:
+        sz = 120 * b * (1 + 0.04 * math.sin(max(0.0, now - t_free - 0.4) * 7))
+        overlay(img, lambda d: d.text((W // 2, 1520), "It's FREE!", font=font("Bold", sz), fill=GOLD, anchor="mm",
+                                      stroke_width=6, stroke_fill=(60, 30, 10)))
     return img
 
 
@@ -658,20 +695,18 @@ def build_audio(path):
         mus[k:k + m] = music[:m]
         k += m
     env = np.interp(t, [0, 0.4, DUR - 1.5, DUR], [0, 1, 1, 0])
-    out += 0.35 * mus * env
 
-    # "talking" blips: short pitched beeps per syllable, lower for Rohan
-    rng = np.random.default_rng(2)
-    for t0, t1, sp, text, _ in LINES:
-        f0 = 300 if sp == "rohan" else 520
-        syl = max(2, int(len(text.replace("\n", " ").split()) * 1.6))
-        for j in range(syl):
-            at = t0 + 0.12 + j * (t1 - t0 - 0.35) / syl
-            dur = 0.06
-            kk = np.arange(int(dur * SR)) / SR
-            f = f0 * rng.uniform(0.85, 1.25)
-            blip = np.sign(np.sin(2 * np.pi * f * kk)) * 0.3 + np.sin(2 * np.pi * f * kk) * 0.7
-            add(blip * np.minimum(1, kk / 0.005) * np.exp(-kk / 0.03), at, 0.25)
+    # voices, with the music ducked while someone speaks
+    duck = np.ones(n)
+    for lid, t0, who, t1 in VOICES:
+        with wave.open(os.path.join(VOICE_DIR, f"{lid}-{who}.wav")) as w:
+            assert w.getframerate() == SR
+            v = np.frombuffer(w.readframes(w.getnframes()), dtype=np.int16).astype(np.float64) / 32768
+        add(v / max(1e-9, np.abs(v).max()), t0, 0.95)
+        a, b = int((t0 - 0.15) * SR), int((t1 + 0.2) * SR)
+        duck[max(0, a):b] = 0.35
+    duck = np.convolve(duck, np.ones(4410) / 4410, mode="same")
+    out_music = 0.35 * mus * env * duck
 
     def sfx(name, at, gain=1.0):
         add(base.load_wav(name), at, gain)
@@ -686,8 +721,9 @@ def build_audio(path):
         sfx("sfx_number", T_RACE + 0.4 + j * (T_SOLVED - T_RACE - 0.6) / 24, 0.35)
     sfx("sfx_complete", T_SOLVED, 1.0)
     sfx("sfx_complete", T_RESULTS + 0.1, 0.8)
-    sfx("sfx_click", 29.65, 1.0)
+    sfx("sfx_click", T_REMATCH, 1.0)
     sfx("sfx_hint", T_END + 0.8, 0.7)
+    out += out_music
     out = out / max(1e-9, np.abs(out).max()) * 0.9
     with wave.open(path, "wb") as w:
         w.setnchannels(1)

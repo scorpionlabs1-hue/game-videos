@@ -19,7 +19,7 @@
 | 2026-10-13 | 30 s Battle Mode video: create room, friends join by code, race with live standings, win | Shorts / Reels / Ads | Game source assets | `python3 src/render_battle.py` → `exports/battle-30s.mp4` |
 | 2026-10-13 | 15 s Battle cut: lobby, countdown, overtake, win | Shorts / Reels | Game source assets | `python3 src/render_battle.py --cut 15` → `exports/battle-15s.mp4` |
 | 2026-10-14 | 26 s "meltdown" short: a player stresses over an Expert puzzle, makes 3 mistakes and cracks his phone; punchline "just tap Hint" | Shorts / Reels / TikTok / Facebook | Game source assets + drawn character | `python3 src/render_meltdown.py` → `exports/meltdown-26s.mp4` |
-| 2026-10-14 | 34 s story "Loser Buys Chai": two friends at a cafe settle a bet in Battle Mode; ends on the game logo | Shorts / Reels / Facebook / Threads | Game source assets + drawn characters | `python3 src/render_battle_story.py` → `exports/battle-story-34s.mp4` |
+| 2026-10-14 | 42 s voiced story "Loser Buys Chai": two friends (boy and girl voices) settle a bet in Battle Mode; ends on the logo with "Download it on the Play Store – it's FREE!" | Shorts / Reels / Facebook / Threads | Game source assets + drawn characters + Edge neural TTS voices | `python3 src/make_battle_story_voices.py` (once), then `python3 src/render_battle_story.py` → `exports/battle-story-42s.mp4` |
 
 ## Rendering
 
