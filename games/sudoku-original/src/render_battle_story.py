@@ -103,6 +103,98 @@ def expr_of(who, now):
     return (cur[1] if who == "rohan" else cur[2]), False
 
 
+# ------------------------------------------------------------------ lip sync
+# Each voice clip is analysed at 100 Hz into mouth parameters:
+#   open  - jaw opening, from the loudness envelope
+#   round - rounded lips (o, u, w): energy sits low (300-1000 Hz) rather than 1-3 kHz
+#   wide  - spread lips (e, i): strong 1.5-3 kHz energy
+#   teeth - fricatives (s, t, ch, f): hiss above 4 kHz with little voicing
+# Quiet gaps between syllables close the lips, which gives the m/b/p shapes.
+LIP_HZ = 100
+
+
+def _analyse(path):
+    with wave.open(path) as w:
+        sr = w.getframerate()
+        x = np.frombuffer(w.readframes(w.getnframes()), dtype=np.int16).astype(np.float64) / 32768
+    hop, win = sr // LIP_HZ, 1024
+    x = np.concatenate([x, np.zeros(win)])
+    freqs = np.fft.rfftfreq(win, 1 / sr)
+    bands = {k: (freqs >= a) & (freqs < b) for k, (a, b) in
+             {"low": (250, 1000), "mid": (1000, 3000), "f2": (1500, 3000), "hiss": (4000, 9000), "all": (80, 9000)}.items()}
+    hann = np.hanning(win)
+    rows = []
+    for i in range(0, len(x) - win, hop):
+        spec = np.abs(np.fft.rfft(x[i:i + win] * hann)) ** 2
+        e = {k: spec[m].sum() + 1e-12 for k, m in bands.items()}
+        rms = math.sqrt(np.mean(x[i + win // 2 - hop:i + win // 2 + hop] ** 2) + 1e-12)
+        rows.append((20 * math.log10(rms), e["low"] / (e["low"] + e["mid"]), e["f2"] / e["all"], e["hiss"] / e["all"]))
+    a = np.array(rows)
+    db = a[:, 0]
+    peak = np.percentile(db, 95)
+    open_ = np.clip((db - (peak - 26)) / 22, 0, 1) ** 1.1
+    voiced = open_ > 0.12
+
+    def norm(v, lo, hi):  # scale against this clip's own range, voiced frames only
+        ref = v[voiced] if voiced.any() else v
+        a0, a1 = np.percentile(ref, lo), np.percentile(ref, hi)
+        return np.clip((v - a0) / max(1e-6, a1 - a0), 0, 1)
+    rnd = norm(a[:, 1], 55, 95) * voiced
+    wide = norm(a[:, 2], 45, 92) * voiced * (1 - rnd)
+    teeth = np.clip((a[:, 3] - 0.15) / 0.35, 0, 1) * (open_ > 0.05)
+    # attack fast, release a little slower, like a real jaw
+    sm = np.zeros_like(open_)
+    for i, v in enumerate(open_):
+        prev = sm[i - 1] if i else 0.0
+        sm[i] = prev + (v - prev) * (0.75 if v > prev else 0.45)
+    k = np.ones(3) / 3
+    return {"open": sm, "round": np.convolve(rnd, k, "same"), "wide": np.convolve(wide, k, "same"),
+            "teeth": np.convolve(teeth, k, "same")}
+
+
+LIPS = [(t0, t1, who, _analyse(os.path.join(VOICE_DIR, f"{lid}-{who}.wav"))) for lid, t0, who, t1 in VOICES]
+
+
+def mouth_at(who, now):
+    """Mouth parameters while `who` is speaking, else None."""
+    for t0, t1, w, a in LIPS:
+        if w == who and t0 - 0.05 <= now < t1 + 0.08:
+            i = int(max(0.0, now - t0 + 0.03) * LIP_HZ)  # lead the audio slightly, as animators do
+            i = min(i, len(a["open"]) - 1)
+            return {k: float(v[i]) for k, v in a.items()}
+    return None
+
+
+def speech_energy(who, now):
+    m = mouth_at(who, now)
+    return m["open"] if m else 0.0
+
+
+def blink(who, now):
+    """Eyelid closure 0..1 from a per-character blink schedule (every 2-5 s)."""
+    rnd = random.Random(17 if who == "rohan" else 29)
+    t = rnd.uniform(0.5, 2.0)
+    while t < DUR + 5:
+        if t <= now < t + 0.2:
+            return math.sin(math.pi * (now - t) / 0.2)
+        t += rnd.uniform(2.0, 5.0)
+        if rnd.random() < 0.15:  # occasional double blink
+            if t - 0.35 <= now < t - 0.15:
+                return math.sin(math.pi * (now - t + 0.35) / 0.2)
+    return 0.0
+
+
+def glance(who, now):
+    """Small eye movements (saccades) that change every half second or so."""
+    k = int(now * 1.7 + (0.4 if who == "meera" else 0))
+    rnd = random.Random(k * 7 + (1 if who == "rohan" else 2))
+    return rnd.uniform(-0.25, 0.25), rnd.uniform(-0.2, 0.2)
+
+
+SMILE = {"grin": 1.0, "laugh": 1.0, "smug": 0.55, "smirk": 0.55, "calm": 0.3, "curious": 0.0, "focus": 0.0,
+         "determined": -0.15, "angry": -0.6, "panic": -0.35, "shock": 0.0}
+
+
 # ------------------------------------------------------------------ characters
 SS = 2
 LOOK = {
@@ -143,6 +235,16 @@ def curve(x0, x1, fn, n=20):
 def draw_head(d, who, cx, cy, s, ex, talking, now, look=(0, 0)):
     """Head and face centred on (cx, cy), head radius about 150*s."""
     L = LOOK[who]
+    mouth = mouth_at(who, now)
+    energy = mouth["open"] if mouth else 0.0
+    # head motion: nods with the speech, a slow sway, and a nod when listening
+    other = "meera" if who == "rohan" else "rohan"
+    listen = speech_energy(other, now)
+    cx += 5 * s * math.sin(now * 1.3 + (0 if who == "rohan" else 2))
+    cy += -9 * s * energy + 4 * s * math.sin(now * 2.1) + 5 * s * listen * max(0.0, math.sin(now * 5))
+    gx, gy = glance(who, now)
+    look = (look[0] + gx, look[1] + gy)
+    lid = blink(who, now)
     skin = L["skin"]
     if ex == "angry":
         skin = mix(skin, (225, 90, 80), 0.45)
@@ -183,7 +285,7 @@ def draw_head(d, who, cx, cy, s, ex, talking, now, look=(0, 0)):
     lx, ly = look
     for sx in (-1, 1):
         ex_, ey = cx + sx * 55 * s, cy - 8 * s
-        if ex in ("laugh", "grin") and not (ex == "grin" and who == "rohan"):
+        if (ex == "laugh" or (ex == "grin" and who == "meera" and not mouth)):
             d.arc([ex_ - 28 * s, ey - 22 * s, ex_ + 28 * s, ey + 26 * s], 200, 340, 7 * s, fill=ink)
             continue
         if ex in ("smug", "smirk", "calm", "focus", "determined"):
@@ -200,6 +302,13 @@ def draw_head(d, who, cx, cy, s, ex, talking, now, look=(0, 0)):
         d.ellipse([px - pr * 0.2 + 3 * s, py - pr * 0.7, px + pr * 0.4 + 3 * s, py - pr * 0.1], fill=WHITE)
         if ex in ("smug", "smirk", "calm", "focus", "determined"):  # heavy lids
             d.line([(ex_ - rx - 2 * s, ey - ry + 3 * s), (ex_ + rx + 2 * s, ey - ry + 3 * s)], 6 * s, fill=ink)
+        if lid > 0.02:  # blink: the upper lid slides down over the eye
+            ylid = ey - ry + 2 * ry * lid
+            arc = [(ex_ + rx * 1.06 * math.cos(a), min(ylid, ey - ry * 1.06 * math.sin(a)))
+                   for a in np.linspace(math.pi, 0, 24)]
+            d.poly(arc + [(ex_ + rx * 1.06, ylid), (ex_ - rx * 1.06, ylid)], fill=skin)
+            half = rx * math.sqrt(max(0.0, 1 - ((ylid - ey) / ry) ** 2)) if abs(ylid - ey) < ry else rx * 0.3
+            d.line([(ex_ - half, ylid), (ex_ + half, ylid)], 5 * s, fill=ink)
         if who == "meera":  # lashes
             for k in (-1, 0, 1):
                 ax = ex_ + sx * (rx * 0.6 + k * 6 * s)
@@ -208,7 +317,7 @@ def draw_head(d, who, cx, cy, s, ex, talking, now, look=(0, 0)):
     # brows
     for sx in (-1, 1):
         bx = cx + sx * 55 * s
-        by = cy - 58 * s
+        by = cy - 58 * s - 9 * s * max(0.0, energy - 0.55) / 0.45
         inner, outer = 0, 0
         if ex in ("angry", "determined"):
             inner, outer = 12, -6
@@ -230,22 +339,16 @@ def draw_head(d, who, cx, cy, s, ex, talking, now, look=(0, 0)):
 
     # mouth
     my = cy + 82 * s
-    open_ = talking and (int(now * 9) % 3 != 0)
     lip = (120, 40, 50)
-    if ex == "shock":
+    if mouth:
+        talk_mouth(d, cx, my, s, mouth, SMILE.get(ex, 0.0), lip)
+    elif ex == "shock":
         d.ellipse([cx - 22 * s, my - 26 * s, cx + 22 * s, my + 26 * s], fill=(80, 25, 35))
     elif ex == "panic":
         d.rrect([cx - 50 * s, my - 18 * s, cx + 50 * s, my + 22 * s], 14 * s, fill=WHITE, outline=lip, width=int(5 * s * SS / 2))
         d.line([(cx - 46 * s, my + 2 * s), (cx + 46 * s, my + 2 * s)], 3 * s, fill=(170, 160, 160))
     elif ex == "angry":
-        if open_:
-            d.ellipse([cx - 44 * s, my - 16 * s, cx + 44 * s, my + 30 * s], fill=(80, 25, 35))
-        else:
-            d.line(curve(cx - 40 * s, cx + 40 * s, lambda u: my + 8 * s - 10 * s * math.sin(u * math.pi)), 7 * s, fill=lip)
-    elif open_:
-        h = 26 if ex in ("grin", "laugh", "panic") else 20
-        d.ellipse([cx - 36 * s, my - 10 * s, cx + 36 * s, my + h * s], fill=(80, 25, 35))
-        d.ellipse([cx - 20 * s, my + (h - 14) * s, cx + 20 * s, my + (h - 2) * s], fill=(220, 100, 110))
+        d.line(curve(cx - 40 * s, cx + 40 * s, lambda u: my + 8 * s - 10 * s * math.sin(u * math.pi)), 7 * s, fill=lip)
     elif ex in ("grin", "laugh"):
         pts = curve(cx - 52 * s, cx + 52 * s, lambda u: my - 6 * s + 34 * s * math.sin(u * math.pi))
         d.poly(pts, fill=(80, 25, 35))
@@ -274,6 +377,37 @@ def draw_head(d, who, cx, cy, s, ex, talking, now, look=(0, 0)):
             mx_, my_ = ax + qx * 20 * s, ay + qy * 20 * s
             mid = math.degrees(math.atan2(-qy, -qx))
             d.arc([mx_ - 16 * s, my_ - 16 * s, mx_ + 16 * s, my_ + 16 * s], mid - 45, mid + 45, 6 * s, fill=(230, 40, 40))
+
+
+def talk_mouth(d, cx, my, s, m, smile, lip):
+    """Mouth shape from the lip-sync parameters, with the expression's smile on the corners."""
+    op, rnd, wide, teeth = m["open"], m["round"], m["wide"], m["teeth"]
+    hw = (44 + 14 * wide + 8 * smile - 20 * rnd) * s           # half width
+    h = op * (46 - 12 * wide + 10 * rnd) * s                   # opening
+    cy_ = my - smile * 9 * s                                   # corner height
+    if h < 4 * s:  # lips together (m, b, p and pauses)
+        d.line(curve(cx - hw, cx + hw, lambda u: cy_ + (my - cy_) * math.sin(u * math.pi) * 1.4), 7 * s, fill=lip)
+        return
+    pw = 0.55 + 0.35 * rnd  # rounder lips bulge more at the corners
+    top = curve(cx - hw, cx + hw, lambda u: cy_ + (my - h * 0.35 - cy_) * math.sin(u * math.pi) ** pw, 24)
+    bot = curve(cx + hw, cx - hw, lambda u: cy_ + (my + h * 0.65 - cy_) * math.sin(u * math.pi) ** pw, 24)
+    d.poly(top + bot, fill=(78, 22, 34))
+    # tongue
+    if op > 0.35:
+        tw = hw * 0.55
+        d.ellipse([cx - tw, my + h * 0.65 - h * 0.45, cx + tw, my + h * 0.65 + 2 * s], fill=(214, 96, 110))
+    # upper teeth, more visible on wide vowels and fricatives
+    th = min(h * 0.5, (6 + 8 * max(wide, teeth)) * s) * (1 - 0.7 * rnd)
+    if th > 1.5 * s:
+        tt = curve(cx - hw * 0.82, cx + hw * 0.82, lambda u: cy_ + (my - h * 0.35 - cy_) * math.sin(u * math.pi) ** pw + 2 * s, 20)
+        tb = [(x, min(y + th, my + h * 0.6)) for x, y in reversed(tt)]
+        d.poly(tt + tb, fill=(250, 250, 248))
+    if teeth > 0.4 and op < 0.5:  # lower teeth on s / t sounds
+        lb = curve(cx + hw * 0.6, cx - hw * 0.6, lambda u: cy_ + (my + h * 0.65 - cy_) * math.sin(u * math.pi) ** pw - 2 * s, 16)
+        lt = [(x, y - min(h * 0.4, 6 * s)) for x, y in reversed(lb)]
+        d.poly(lb + lt, fill=(240, 240, 236))
+    d.line(top, 6 * s, fill=lip)
+    d.line(bot, 7 * s, fill=lip)
 
 
 def draw_body(d, who, cx, top, s, phone_glow=True):
@@ -415,7 +549,7 @@ def sec_cafe(now):
     img = cafe_bg(now)
     for who, (cx, cy, s) in CAFE_POS.items():
         ex, talking = expr_of(who, now)
-        bob = 6 * math.sin(now * 2 + (0 if who == "rohan" else 1.5)) + (4 * math.sin(now * 18) if talking else 0)
+        bob = 4 * math.sin(now * 1.6 + (0 if who == "rohan" else 1.5))  # breathing
         look = (1, 0.2) if who == "rohan" else (-1, 0.2)
         img.alpha_composite(person_layer(who, cx, cy, s, now, phone=now > 9.0, look=look, bob=bob))
     table_fg(img, now)
